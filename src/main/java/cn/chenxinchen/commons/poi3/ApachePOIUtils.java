@@ -1,6 +1,8 @@
 package cn.chenxinchen.commons.poi3;
 
 /**
+ * 明确没有文档
+ *
  * ░░░░░░░░░░░░░░░░░░░░░░░░▄░░
  * ░░░░░░░░░▐█░░░░░░░░░░░▄▀▒▌░
  * ░░░░░░░░▐▀▒█░░░░░░░░▄▀▒▒▒▐
@@ -15,6 +17,8 @@ package cn.chenxinchen.commons.poi3;
  * 千万不要让你的小孩入这行
  */
 
+import cn.chenxinchen.commons.annotation.ColumnMapping;
+import cn.chenxinchen.commons.annotation.RowMapping;
 import lombok.extern.slf4j.Slf4j;
 
 import org.apache.poi.ss.usermodel.*;
@@ -92,30 +96,34 @@ public class ApachePOIUtils<T> {
         Workbook workbook = getWorkbook(file);
         // 2.指定工作表
         Sheet sheet = workbook.getSheetAt(indexSheet);
-        // 3.获取最大行数,有几行,excel中有1，2，3，4，5来表示行数,对应到程序中一行就是一个实例对象
+        // 3.获取Excel表格最大行数,excel中有1，2，3，4，5来表示行数,对应到程序中一行就是一个实例对象
         int rowNum = sheet.getLastRowNum() + 1;
-        // 4.获取属性数组
-        Field[] fields = oClass.getDeclaredFields();
-        for (int i = indexRowNum; i < rowNum; i++) {
-            // 5.准备好对象实例
-            T o = oClass.newInstance();
-            Row row = sheet.getRow(i);
-            // 6.获取最大列数，有几列,excel中有A,B,C,D,E来表示列数,对应到程序中一列就是一个属性
-            int cellNum = row.getLastCellNum();
-            // 7.判断属性和列数数量相同
-            if ((cellNum - indexCellNum) != fields.length)
-                throw new RuntimeException("表格列数和属性数量不相同");
-            int fieldIndex = 0;
-            for (int j = indexCellNum; j < cellNum; j++) {
-                // 8.获取每个单元格，啥都不填获取cell为null
-                Cell cell = row.getCell(j);
-                if (cell == null)
-                    continue;
-                // 9.获取属性名字，到时候调用属性的set方法来赋值
-                Field field = fields[fieldIndex++];
+        // 4.添加解析策略，当实体类有RowMapping注释使用注释解析，没有注释使用默认解析
+        RowMapping rowMapping = oClass.getDeclaredAnnotation(RowMapping.class);
+        if(rowMapping == null){
+            // 默认按属性顺序和表格顺序解析过去
+            // 4.获取属性数组
+            Field[] fields = oClass.getDeclaredFields();
+            for (int i = indexRowNum; i < rowNum; i++) {
+                // 5.准备好对象实例
+                T o = oClass.newInstance();
+                Row row = sheet.getRow(i);
+                // 6.获取最大列数，有几列,excel中有A,B,C,D,E来表示列数,对应到程序中一列就是一个属性
+                int cellNum = row.getLastCellNum();
+                // 7.判断属性和列数数量相同
+                if ((cellNum - indexCellNum) != fields.length)
+                    throw new RuntimeException("表格列数和属性数量不相同");
+                int fieldIndex = 0;
+                for (int j = indexCellNum; j < cellNum; j++) {
+                    // 8.获取每个单元格，啥都不填获取cell为null
+                    Cell cell = row.getCell(j);
+                    if (cell == null)
+                        continue;
+                    // 9.获取属性名字，到时候调用属性的set方法来赋值
+                    Field field = fields[fieldIndex++];
 
-                // 根据属性类型把内容强制赋值(尽可能把内容值转换属性类型，但会出现不可预知错误)
-                assembly(oClass, o, cell, field);
+                    // 根据属性类型把内容强制赋值(尽可能把内容值转换属性类型，但会出现不可预知错误)
+                    assembly(oClass, o, cell, field);
 
                 /*
                 // 10.获取单元格类型,并尝试按顺序给实体类属性赋值,根据单元格内容类型给属性封装
@@ -151,9 +159,33 @@ public class ApachePOIUtils<T> {
                         break;
                 }
                 */
+                }
+                container.add(o);
             }
-            container.add(o);
+        }else{
+            // 使用注解解析
+            // 确定从第几行开始解析
+            int rowIndexNum = rowMapping.value();
+            // 4.获取属性数组
+            Field[] fields = oClass.getDeclaredFields();
+            for (int i = indexRowNum; i < rowNum; i++) {
+                // 准备实体类
+                T o = oClass.newInstance();
+                // 准备表格行对象
+                Row row = sheet.getRow(i);
+                // 循环属性
+                for (Field field : fields) {
+                    ColumnMapping columnMapping = field.getDeclaredAnnotation(ColumnMapping.class);
+                    if(columnMapping != null){
+                        // 获取解析列下标
+                        int index = columnMapping.value().getIndex();
+                        assembly(oClass,o,row.getCell(index),field);
+                    }
+                }
+                container.add(o);
+            }
         }
+
         // ?.收尾工作
         workbook.close();
         return container;
