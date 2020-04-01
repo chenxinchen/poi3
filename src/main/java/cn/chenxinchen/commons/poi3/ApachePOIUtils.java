@@ -2,7 +2,7 @@ package cn.chenxinchen.commons.poi3;
 
 /**
  * 明确没有文档
- *
+ * <p>
  * ░░░░░░░░░░░░░░░░░░░░░░░░▄░░
  * ░░░░░░░░░▐█░░░░░░░░░░░▄▀▒▌░
  * ░░░░░░░░▐▀▒█░░░░░░░░▄▀▒▒▒▐
@@ -19,6 +19,7 @@ package cn.chenxinchen.commons.poi3;
 
 import cn.chenxinchen.commons.annotation.ColumnMapping;
 import cn.chenxinchen.commons.annotation.RowMapping;
+import cn.hutool.core.util.StrUtil;
 import lombok.extern.slf4j.Slf4j;
 
 import org.apache.poi.ss.usermodel.*;
@@ -55,7 +56,7 @@ public class ApachePOIUtils<T> {
      */
     private static Workbook getWorkbook(File file) throws IOException {
         // 1.获取文件名后缀
-        String suffixName = null;
+        String suffixName;
         try {
             suffixName = file.getName().substring(file.getName().lastIndexOf('.'));
         } catch (StringIndexOutOfBoundsException e) {
@@ -71,6 +72,24 @@ public class ApachePOIUtils<T> {
             throw new RuntimeException("文件不是Excel文档！");
     }
 
+    private static Workbook getWorkbook(InputStream is, String fileName) throws IOException {
+        // 1.获取文件名后缀
+        String suffixName;
+        try {
+            suffixName = fileName.substring(fileName.lastIndexOf('.'));
+        } catch (StringIndexOutOfBoundsException e) {
+            log.error("该文件没有后缀，错误信息 {}", e);
+            return null;
+        }
+        // 2.生成对应版本Workbook对象,07版.xlsx 03版.xls
+        if (".xlsx".equals(suffixName))
+            return new XSSFWorkbook(is);
+        else if (".xls".equals(suffixName))
+            return new HSSFWorkbook(is);
+        else
+            throw new RuntimeException("文件不是Excel文档！");
+    }
+
     /**
      * 使用说明：
      * <br>
@@ -78,29 +97,28 @@ public class ApachePOIUtils<T> {
      * 你只要明确实体类，那接下来你就会得到封装好的List
      * <br>
      * 默认尽量把Excel内容解析到对象上(有风险，给你们加bug，手动狗头)
+     * <p>当实体类上有注解时，参数indexRowNum和indexCellNum不生效</p>
      *
-     * @param file 文件对象
-     * @param oClass 字节码对象
-     * @param indexSheet 工作表
-     * @param indexRowNum 第几行开始读
+     * @param workbook     Excel对象
+     * @param oClass       字节码对象
+     * @param indexSheet   工作表
+     * @param indexRowNum  第几行开始读
      * @param indexCellNum 第几列开始解析
-     * @param <T> 泛型
+     * @param <T>          泛型
      * @return
      * @throws IOException
      * @throws IllegalAccessException
      * @throws InstantiationException
      */
-    public static <T> List<T> readExcel(File file, Class<T> oClass, int indexSheet, int indexRowNum, int indexCellNum) throws IOException, IllegalAccessException, InstantiationException, NoSuchMethodException, InvocationTargetException {
+    public static <T> List<T> readExcel(Workbook workbook, Class<T> oClass, int indexSheet, int indexRowNum, int indexCellNum) throws IOException, IllegalAccessException, InstantiationException, NoSuchMethodException, InvocationTargetException {
         List<T> container = new ArrayList<>();
-        // 1.获取Workbook对象
-        Workbook workbook = getWorkbook(file);
         // 2.指定工作表
         Sheet sheet = workbook.getSheetAt(indexSheet);
         // 3.获取Excel表格最大行数,excel中有1，2，3，4，5来表示行数,对应到程序中一行就是一个实例对象
         int rowNum = sheet.getLastRowNum() + 1;
         // 4.添加解析策略，当实体类有RowMapping注释使用注释解析，没有注释使用默认解析
         RowMapping rowMapping = oClass.getDeclaredAnnotation(RowMapping.class);
-        if(rowMapping == null){
+        if (rowMapping == null) {
             // 默认按属性顺序和表格顺序解析过去
             // 4.获取属性数组
             Field[] fields = oClass.getDeclaredFields();
@@ -162,10 +180,10 @@ public class ApachePOIUtils<T> {
                 }
                 container.add(o);
             }
-        }else{
+        } else {
             // 使用注解解析
             // 确定从第几行开始解析
-            int rowIndexNum = rowMapping.value();
+            indexRowNum = rowMapping.value();
             // 4.获取属性数组
             Field[] fields = oClass.getDeclaredFields();
             for (int i = indexRowNum; i < rowNum; i++) {
@@ -176,10 +194,10 @@ public class ApachePOIUtils<T> {
                 // 循环属性
                 for (Field field : fields) {
                     ColumnMapping columnMapping = field.getDeclaredAnnotation(ColumnMapping.class);
-                    if(columnMapping != null){
+                    if (columnMapping != null) {
                         // 获取解析列下标
                         int index = columnMapping.value().getIndex();
-                        assembly(oClass,o,row.getCell(index),field);
+                        assembly(oClass, o, row.getCell(index), field);
                     }
                 }
                 container.add(o);
@@ -191,14 +209,102 @@ public class ApachePOIUtils<T> {
         return container;
     }
 
+    public static <T> List<T> readExcel(File file, Class<T> oClass, int indexSheet, int indexRowNum, int indexCellNum) throws Exception {
+        return readExcel(getWorkbook(file), oClass, indexSheet, indexRowNum, indexCellNum);
+    }
+
+    public static <T> List<T> readExcel(InputStream is, String fileName, Class<T> oClass, int indexSheet, int indexRowNum, int indexCellNum) throws Exception {
+        return readExcel(getWorkbook(is, fileName), oClass, indexSheet, indexRowNum, indexCellNum);
+    }
+
+    /**
+     * 读取表格全部内容全以字符串存储
+     *
+     * @param workbook     Excel对象
+     * @param indexSheet   工作表
+     * @param indexRowNum  第几行开始读
+     * @param indexCellNum 第几列开始解析
+     * @return List<String [ ]>
+     */
+    public static List<String[]> readExcel2String(Workbook workbook, int indexSheet, int indexRowNum, int indexCellNum) throws IOException {
+        // 准备容器
+        List<String[]> container = new ArrayList<>();
+        // 指定工作表
+        Sheet sheet = workbook.getSheetAt(indexSheet);
+        // 获取Excel表格最大行数
+        int rowNum = sheet.getLastRowNum() + 1;
+        // 循环行数
+        for (int i = indexRowNum; i < rowNum; i++) {
+            // 获取行对象
+            Row row = sheet.getRow(i);
+            // 获取列最大列数
+            short cellNum = row.getLastCellNum();
+            // 准备列的存放数据
+            String[] data = new String[cellNum];
+            int dataIndex = 0;
+            for (int j = indexCellNum; j < cellNum; j++) {
+                // 获取单元格
+                Cell cell = row.getCell(j);
+                // 判断数据并填充
+                switch (cell.getCellTypeEnum()) {
+                    case _NONE:
+//                        log.debug("未知类型");
+                        break;
+                    case NUMERIC:
+//                        log.debug("数字类型，整数、小数、日期");
+//                        log.info(cell.getNumericCellValue() + "");
+                        data[dataIndex] = String.valueOf(cell.getNumericCellValue());
+                        break;
+                    case STRING:
+//                        log.debug("文本类型，等同String");
+//                        log.info(cell.getStringCellValue());
+                        data[dataIndex] = cell.getStringCellValue();
+                        break;
+                    case FORMULA:
+//                        log.debug("公式类型，没理解什么类型");
+                        try {
+                            data[dataIndex] = String.valueOf(cell.getNumericCellValue());
+                        } catch (Exception e) {
+                            data[dataIndex] = String.valueOf(cell.getStringCellValue());
+                        }
+                        break;
+                    case BLANK:
+//                        log.debug("空白类型，现在不确定空白是空字符串，还是null");
+                        break;
+                    case BOOLEAN:
+//                        log.debug("布尔类型，等同boolean");
+//                        log.info(cell.getBooleanCellValue() + "");
+                        data[dataIndex] = String.valueOf(cell.getBooleanCellValue());
+                        break;
+                    case ERROR:
+//                        log.debug("错误类型，不知道干嘛用的");
+//                        log.info(cell.getErrorCellValue() + "");
+                        break;
+                }
+                dataIndex++;
+            }
+            if (!StrUtil.isAllEmpty(data))
+                container.add(data);
+        }
+        return container;
+    }
+
+    public static List<String[]> readExcel2String(File file, int indexSheet, int indexRowNum, int indexCellNum) throws Exception {
+        return readExcel2String(getWorkbook(file), indexSheet, indexRowNum, indexCellNum);
+    }
+
+    public static List<String[]> readExcel2String(InputStream is, String fileName, int indexSheet, int indexRowNum, int indexCellNum) throws Exception {
+        return readExcel2String(getWorkbook(is, fileName), indexSheet, indexRowNum, indexCellNum);
+    }
+
     /**
      * 专门用于封装对象
      *
      * @param oClass 字节码对象
-     * @param o 实例对象
-     * @param cell 单元格
-     * @param field 属性
-     * @param <T> 泛型
+     * @param o      实例对象
+     * @param cell   单元格
+     * @param field  属性
+     * @param <T>    泛型
      * @throws NoSuchMethodException
      * @throws IllegalAccessException
      * @throws InvocationTargetException
@@ -247,7 +353,7 @@ public class ApachePOIUtils<T> {
                 Method method = oClass.getMethod("set" + fieldNameUpperCase, Date.class);
                 method.invoke(o, new Date((long) cell.getNumericCellValue()));
             }
-        }catch (IllegalStateException e){
+        } catch (IllegalStateException e) {
             if ("java.lang.String".equals(typeName)) {
                 Method method = oClass.getMethod("set" + fieldNameUpperCase, String.class);
                 switch (cell.getCellTypeEnum()) {
@@ -258,7 +364,7 @@ public class ApachePOIUtils<T> {
                         method.invoke(o, new Boolean(cell.getBooleanCellValue()).toString());
                         break;
                 }
-            }else if ("char".equals(typeName) || "java.lang.Character".equals(typeName)) {
+            } else if ("char".equals(typeName) || "java.lang.Character".equals(typeName)) {
                 Method method = oClass.getMethod("set" + fieldNameUpperCase, "char".equals(typeName) ? char.class : Character.class);
                 switch (cell.getCellTypeEnum()) {
                     case NUMERIC:
@@ -268,8 +374,8 @@ public class ApachePOIUtils<T> {
                         method.invoke(o, new Boolean(cell.getBooleanCellValue()).toString().charAt(0));
                         break;
                 }
-            }else
-                log.error("单元格内容转换不了属性类型 {}",e);
+            } else
+                log.error("单元格内容转换不了属性类型 {}", e);
         }
     }
 }
