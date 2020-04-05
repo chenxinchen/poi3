@@ -5,10 +5,7 @@ import java.lang.annotation.*;
 /**
  * 用于标志属性在表格哪个位置
  *
- * 适用示例
- * @ColumnMapping(value = ColumnSerial.A)
- *
- * @Author chenxinchen
+ * 作者: 陈信晨
  */
 @Target(ElementType.FIELD)
 @Retention(RetentionPolicy.RUNTIME)

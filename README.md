@@ -13,7 +13,7 @@
 - file/inputStream 文件对象/输入流
 - oClass 字节码对象
 - indexSheet 工作表
-- indexRowNum 第几行开始读（使用注释失效）
+- indexRowNum 第几行开始解析（使用注释失效）
 - indexCellNum 第几列开始解析（使用注释失效）
 
 返回static <T> List<T>
@@ -23,7 +23,7 @@
 
 - file/inputStream 文件对象/输入流
 - indexSheet 工作表
-- indexRowNum 第几行开始读
+- indexRowNum 第几行开始解析
 - indexCellNum 第几列开始解析
 
 返回List<String[]>

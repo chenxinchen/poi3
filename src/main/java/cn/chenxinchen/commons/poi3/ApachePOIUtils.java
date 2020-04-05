@@ -18,19 +18,25 @@ package cn.chenxinchen.commons.poi3;
  */
 
 import cn.chenxinchen.commons.annotation.ColumnMapping;
+import cn.chenxinchen.commons.annotation.ColumnSerial;
 import cn.chenxinchen.commons.annotation.RowMapping;
 import cn.hutool.core.util.StrUtil;
 import lombok.extern.slf4j.Slf4j;
-
-import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.hssf.usermodel.HSSFWorkbook;
+import org.apache.poi.ss.usermodel.Cell;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 
-import java.io.*;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
-import java.lang.reflect.Type;
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -41,12 +47,12 @@ import java.util.List;
  * HSSF － 提供读写Microsoft Excel格式档案的功能。
  * HWPF － 提供读写Microsoft Word格式档案的功能。
  *
- * @Author chenxinchen
- * @Version 1.0 ,POI版本 3.17,poi-ooxml 3.17
+ * 作者:陈信晨
+ * 版本: 1.0 ,POI 3.17,poi-ooxml 3.17
  * 用世界上最好的工具类，写最简单的业务代码！！！
  */
 @Slf4j
-public class ApachePOIUtils<T> {
+public class ApachePOIUtils {
     /**
      * 生成对应版本的Workbook
      *
@@ -55,15 +61,9 @@ public class ApachePOIUtils<T> {
      * @throws IOException
      */
     private static Workbook getWorkbook(File file) throws IOException {
-        // 1.获取文件名后缀
-        String suffixName;
-        try {
-            suffixName = file.getName().substring(file.getName().lastIndexOf('.'));
-        } catch (StringIndexOutOfBoundsException e) {
-            log.error("该文件没有后缀，错误信息 {}", e);
-            return null;
-        }
-        // 2.生成对应版本Workbook对象,07版.xlsx 03版.xls
+        // 获取文件名后缀
+        String suffixName = file.getName().substring(file.getName().lastIndexOf('.'));
+        // 生成对应版本Workbook对象,07版.xlsx 03版.xls
         if (".xlsx".equals(suffixName))
             return new XSSFWorkbook(new FileInputStream(file));
         else if (".xls".equals(suffixName))
@@ -73,15 +73,9 @@ public class ApachePOIUtils<T> {
     }
 
     private static Workbook getWorkbook(InputStream is, String fileName) throws IOException {
-        // 1.获取文件名后缀
-        String suffixName;
-        try {
-            suffixName = fileName.substring(fileName.lastIndexOf('.'));
-        } catch (StringIndexOutOfBoundsException e) {
-            log.error("该文件没有后缀，错误信息 {}", e);
-            return null;
-        }
-        // 2.生成对应版本Workbook对象,07版.xlsx 03版.xls
+        // 获取文件名后缀
+        String suffixName = fileName.substring(fileName.lastIndexOf('.'));
+        // 生成对应版本Workbook对象,07版.xlsx 03版.xls
         if (".xlsx".equals(suffixName))
             return new XSSFWorkbook(is);
         else if (".xls".equals(suffixName))
@@ -99,45 +93,41 @@ public class ApachePOIUtils<T> {
      * 默认尽量把Excel内容解析到对象上(有风险，给你们加bug，手动狗头)
      * <p>当实体类上有注解时，参数indexRowNum和indexCellNum不生效</p>
      *
-     * @param workbook     Excel对象
-     * @param oClass       字节码对象
-     * @param indexSheet   工作表
-     * @param indexRowNum  第几行开始读
-     * @param indexCellNum 第几列开始解析
-     * @param <T>          泛型
-     * @return
-     * @throws IOException
-     * @throws IllegalAccessException
-     * @throws InstantiationException
+     * @param workbook    Excel对象
+     * @param oClass      字节码对象
+     * @param indexSheet  工作表
+     * @param indexRowNum 以Excel行数为准，从第几行解析
+     * @param indexCell   以Excel列数为准，第几列开始解析
+     * @param <T>         泛型
+     * @return 一个List对象
      */
-    public static <T> List<T> readExcel(Workbook workbook, Class<T> oClass, int indexSheet, int indexRowNum, int indexCellNum) throws IOException, IllegalAccessException, InstantiationException, NoSuchMethodException, InvocationTargetException {
+    private static <T> List<T> readExcel(Workbook workbook, Class<T> oClass, int indexSheet, int indexRowNum, ColumnSerial indexCell) throws IOException, IllegalAccessException, InstantiationException, NoSuchMethodException, InvocationTargetException {
         List<T> container = new ArrayList<>();
-        // 2.指定工作表
+        // 指定工作表
         Sheet sheet = workbook.getSheetAt(indexSheet);
-        // 3.获取Excel表格最大行数,excel中有1，2，3，4，5来表示行数,对应到程序中一行就是一个实例对象
+        // 获取Excel表格最大行数
         int rowNum = sheet.getLastRowNum() + 1;
-        // 4.添加解析策略，当实体类有RowMapping注释使用注释解析，没有注释使用默认解析
+        // 添加解析策略，当实体类有RowMapping注释使用注释解析，没有注释使用默认解析
         RowMapping rowMapping = oClass.getDeclaredAnnotation(RowMapping.class);
         if (rowMapping == null) {
-            // 默认按属性顺序和表格顺序解析过去
-            // 4.获取属性数组
+            // 默认解析按属性顺序和表格顺序解析过去
             Field[] fields = oClass.getDeclaredFields();
-            for (int i = indexRowNum; i < rowNum; i++) {
-                // 5.准备好对象实例
+            for (int i = indexRowNum - 1; i < rowNum; i++) {
+                // 准备好对象实例
                 T o = oClass.newInstance();
                 Row row = sheet.getRow(i);
-                // 6.获取最大列数，有几列,excel中有A,B,C,D,E来表示列数,对应到程序中一列就是一个属性
+                // 获取最大列数
                 int cellNum = row.getLastCellNum();
-                // 7.判断属性和列数数量相同
-                if ((cellNum - indexCellNum) != fields.length)
-                    throw new RuntimeException("表格列数和属性数量不相同");
+                // 判断属性和列数数量相同
+                if ((cellNum - indexCell.getIndex()) > fields.length)
+                    throw new RuntimeException("表格列数和属性不兼容，表格列数:" + (cellNum - indexCell.getIndex()) + "属性个数:" + fields.length);
                 int fieldIndex = 0;
-                for (int j = indexCellNum; j < cellNum; j++) {
-                    // 8.获取每个单元格，啥都不填获取cell为null
+                for (int j = indexCell.getIndex(); j < cellNum; j++) {
+                    // 获取每个单元格，啥都不填获取cell为null
                     Cell cell = row.getCell(j);
                     if (cell == null)
                         continue;
-                    // 9.获取属性名字，到时候调用属性的set方法来赋值
+                    // 获取属性名字，到时候调用属性的set方法来赋值
                     Field field = fields[fieldIndex++];
 
                     // 根据属性类型把内容强制赋值(尽可能把内容值转换属性类型，但会出现不可预知错误)
@@ -182,16 +172,13 @@ public class ApachePOIUtils<T> {
             }
         } else {
             // 使用注解解析
-            // 确定从第几行开始解析
-            indexRowNum = rowMapping.value();
-            // 4.获取属性数组
             Field[] fields = oClass.getDeclaredFields();
-            for (int i = indexRowNum; i < rowNum; i++) {
+            for (int i = rowMapping.value() - 1; i < rowNum; i++) {
                 // 准备实体类
                 T o = oClass.newInstance();
                 // 准备表格行对象
                 Row row = sheet.getRow(i);
-                // 循环属性
+                // 循环实体类属性
                 for (Field field : fields) {
                     ColumnMapping columnMapping = field.getDeclaredAnnotation(ColumnMapping.class);
                     if (columnMapping != null) {
@@ -203,30 +190,29 @@ public class ApachePOIUtils<T> {
                 container.add(o);
             }
         }
-
-        // ?.收尾工作
+        // 收尾工作
         workbook.close();
         return container;
     }
 
-    public static <T> List<T> readExcel(File file, Class<T> oClass, int indexSheet, int indexRowNum, int indexCellNum) throws Exception {
-        return readExcel(getWorkbook(file), oClass, indexSheet, indexRowNum, indexCellNum);
+    public static <T> List<T> readExcel(File file, Class<T> oClass, int indexSheet, int indexRowNum, ColumnSerial indexCell) throws Exception {
+        return readExcel(getWorkbook(file), oClass, indexSheet, indexRowNum, indexCell);
     }
 
-    public static <T> List<T> readExcel(InputStream is, String fileName, Class<T> oClass, int indexSheet, int indexRowNum, int indexCellNum) throws Exception {
-        return readExcel(getWorkbook(is, fileName), oClass, indexSheet, indexRowNum, indexCellNum);
+    public static <T> List<T> readExcel(InputStream is, String fileName, Class<T> oClass, int indexSheet, int indexRowNum, ColumnSerial indexCell) throws Exception {
+        return readExcel(getWorkbook(is, fileName), oClass, indexSheet, indexRowNum, indexCell);
     }
 
     /**
      * 读取表格全部内容全以字符串存储
      *
-     * @param workbook     Excel对象
-     * @param indexSheet   工作表
-     * @param indexRowNum  第几行开始读
-     * @param indexCellNum 第几列开始解析
+     * @param workbook    Excel对象
+     * @param indexSheet  工作表
+     * @param indexRowNum 第几行开始解析
+     * @param indexCell   第几列开始解析
      * @return List<String [ ]>
      */
-    public static List<String[]> readExcel2String(Workbook workbook, int indexSheet, int indexRowNum, int indexCellNum) throws IOException {
+    private static List<String[]> readExcel2String(Workbook workbook, int indexSheet, int indexRowNum, ColumnSerial indexCell) {
         // 准备容器
         List<String[]> container = new ArrayList<>();
         // 指定工作表
@@ -234,7 +220,7 @@ public class ApachePOIUtils<T> {
         // 获取Excel表格最大行数
         int rowNum = sheet.getLastRowNum() + 1;
         // 循环行数
-        for (int i = indexRowNum; i < rowNum; i++) {
+        for (int i = indexRowNum - 1; i < rowNum; i++) {
             // 获取行对象
             Row row = sheet.getRow(i);
             // 获取列最大列数
@@ -242,7 +228,7 @@ public class ApachePOIUtils<T> {
             // 准备列的存放数据
             String[] data = new String[cellNum];
             int dataIndex = 0;
-            for (int j = indexCellNum; j < cellNum; j++) {
+            for (int j = indexCell.getIndex(); j < cellNum; j++) {
                 // 获取单元格
                 Cell cell = row.getCell(j);
                 // 判断数据并填充
@@ -289,12 +275,12 @@ public class ApachePOIUtils<T> {
         return container;
     }
 
-    public static List<String[]> readExcel2String(File file, int indexSheet, int indexRowNum, int indexCellNum) throws Exception {
-        return readExcel2String(getWorkbook(file), indexSheet, indexRowNum, indexCellNum);
+    public static List<String[]> readExcel2String(File file, int indexSheet, int indexRowNum, ColumnSerial indexCell) throws Exception {
+        return readExcel2String(getWorkbook(file), indexSheet, indexRowNum, indexCell);
     }
 
-    public static List<String[]> readExcel2String(InputStream is, String fileName, int indexSheet, int indexRowNum, int indexCellNum) throws Exception {
-        return readExcel2String(getWorkbook(is, fileName), indexSheet, indexRowNum, indexCellNum);
+    public static List<String[]> readExcel2String(InputStream is, String fileName, int indexSheet, int indexRowNum, ColumnSerial indexCell) throws Exception {
+        return readExcel2String(getWorkbook(is, fileName), indexSheet, indexRowNum, indexCell);
     }
 
     /**
@@ -305,9 +291,6 @@ public class ApachePOIUtils<T> {
      * @param cell   单元格
      * @param field  属性
      * @param <T>    泛型
-     * @throws NoSuchMethodException
-     * @throws IllegalAccessException
-     * @throws InvocationTargetException
      */
     private static <T> void assembly(Class<T> oClass, T o, Cell cell, Field field) throws NoSuchMethodException, IllegalAccessException, InvocationTargetException {
         String fieldNameUpperCase = field.getName().substring(0, 1).toUpperCase() + field.getName().substring(1);
@@ -358,7 +341,7 @@ public class ApachePOIUtils<T> {
                 Method method = oClass.getMethod("set" + fieldNameUpperCase, String.class);
                 switch (cell.getCellTypeEnum()) {
                     case NUMERIC:
-                        method.invoke(o, new Double(cell.getNumericCellValue()).toString());
+                        method.invoke(o, new BigDecimal(cell.getNumericCellValue()).toString());
                         break;
                     case BOOLEAN:
                         method.invoke(o, new Boolean(cell.getBooleanCellValue()).toString());
