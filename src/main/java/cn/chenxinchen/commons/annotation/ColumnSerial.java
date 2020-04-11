@@ -4,6 +4,11 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
+/**
+ * 枚举Excel列
+ * <p>
+ * 作者: 陈信晨
+ */
 @Getter
 @NoArgsConstructor
 @AllArgsConstructor

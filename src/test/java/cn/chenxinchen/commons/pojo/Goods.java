@@ -6,7 +6,7 @@ import cn.chenxinchen.commons.annotation.RowMapping;
 import lombok.Data;
 
 @Data
-@RowMapping
+@RowMapping(2)
 public class Goods {
     @ColumnMapping(ColumnSerial.C)
     private int id;

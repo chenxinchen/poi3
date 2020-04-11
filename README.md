@@ -6,6 +6,8 @@
 
 导入本项目jar包或直接复制项目核心代码（注意复制没有依赖）
 
+本工具类提供DEMO测试类，请参考PoiToolTest.java
+
 核心类ApachePOIUtils
 
 静态方法readExcel
@@ -14,7 +16,7 @@
 - oClass 字节码对象
 - indexSheet 工作表
 - indexRowNum 第几行开始解析（使用注释失效）
-- indexCellNum 第几列开始解析（使用注释失效）
+- indexCell 第几列开始解析（使用注释失效）
 
 返回static <T> List<T>
 
@@ -24,11 +26,18 @@
 - file/inputStream 文件对象/输入流
 - indexSheet 工作表
 - indexRowNum 第几行开始解析
-- indexCellNum 第几列开始解析
+- indexCell 第几列开始解析
+- endCell 第几列结束解析(非必传)
 
 返回List<String[]>
 
 ## 更新日记 ##
+
+- 2020年4月11日 10:22:30
+
+给静态方法readExcel2String添加一个参数，可指定解析结束的列数
+
+移除对Hutool工具依赖,需要的工具自己实现
 
 - 2020年4月1日 13:04:10
 
